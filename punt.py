@@ -8,9 +8,12 @@ import subprocess
 
 #TODO: Random session name
 #TODO: File saving and rotation
-#TODO: PID management
 #TODO: Profiling
-#TODO: show dynamic current time
+#TODO: Bold selects
+#TODO: build curses app
+    #TODO: stats - selected/rejected lines
+    #TODO: show dynamic current time
+    #TODO: show config and pids etc
 
 COMMA = ','
 SPACE = ' '
@@ -36,7 +39,7 @@ WARN = 'WRN'
 ERROR ='ERR'
 FATAL = 'FTL'
 
-ENABLE_LOGGING = False
+ENABLE_LOGGING = True
 
 def log(message, *args):
     if ENABLE_LOGGING:
@@ -85,13 +88,13 @@ def formatter(color_dict):
         tid = color.fg(_pad(obj.tid, 5), color_dict['tid'])
         #level = color.fg(obj.level, D_BLUE)
         level = _format_log_level(color, obj.level)
-        log = color.fg(obj.log, color_dict['log'])
-        return f"{date} {time} {pid}({tid}) {level} {log}"
+        message = color.fg(obj.message, color_dict['message'])
+        return f"{date} {time} {pid}({tid}) {level} {message}"
     return _formatter
 
-color_dict = {'date':GREY, 'time':L_BLUE, 'pid':GREY, 'tid':D_GREY, 'log':WHITE}
+color_dict = {'date':GREY, 'time':L_BLUE, 'pid':GREY, 'tid':D_GREY, 'message':WHITE}
 
-LogLine = namedtuple('LogLine', ['line_no', 'date','time','pid','tid','level','log'])
+LogLine = namedtuple('LogLine', ['line_no', 'date','time','pid','tid','level','message'])
 LogLine.__str__ = formatter(color_dict)
 
 
@@ -105,10 +108,8 @@ def selector(select_patterns):
 
 def rejector(reject_patterns):
     def _pred(log_line):
-        log('reject patterns', reject_patterns)
         for p in reject_patterns:
-            result = p.search(log_line.log)
-            log('reject result', p, result)
+            result = p.search(log_line.message)
             if result and result.start() >= 0: return True
         return False
     return _pred
@@ -136,12 +137,10 @@ class ProcessTracker:
         self._tracked_pids = set()
         self._update_tracked_pids()
         self._all_pids = set(self._tracked_pids)
-        log('Initialized tracker', self._tracked_pids)
 
     def _get_pid(self, package):
         result = subprocess.run(['adb','shell','pidof',package], stdout=subprocess.PIPE)
         pid = result.stdout.decode('utf-8')[:-1]
-        log(f'pid for {package}: {pid}')
         return pid
 
     def _update_tracked_pids(self):
@@ -157,12 +156,9 @@ class ProcessTracker:
         # we seem to have a new pid
         # lets see if it for one of our tracked packages
         self._update_tracked_pids()
-        log('Updated tracked pids')
         if pid in self._tracked_pids:
-            log(f'New tracked process id: {pid}')
             return True
         # seems to be a new process that we don't care about
-        log(f'Add new untracked process: {pid}')
         self._all_pids.add(pid)
         return False
 
@@ -177,30 +173,20 @@ def looper(lines, printer, select_fn, reject_fn, packages=None):
         try:
             log_line = _parse(line, line_no)
             if tracker.is_tracked(log_line.pid):
-                log('tracked')
                 if reject_fn:
-                    log('tracked reject is defined')
                     if reject_fn(log_line):
-                        log('garbage')
                         garbage(log_line)
                     else:
-                        log('valid')
                         printer(log_line)
                 else:
-                    log('tracked with no reject_fn defined')
                     printer(log_line)
             else:
-                log('untracked')
                 if select_fn:
-                    log('untracked select defined')
                     if select_fn(log_line):
-                        log('untracked selected valid')
                         printer(log_line)
                     else:
-                        log('untracked rejected')
                         garbage(log_line)
                 else:
-                   log('untracked select undefined')
                    garbage(log_line)
         except ValueError as e:
             log('NOPARSE:',line)
