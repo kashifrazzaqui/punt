@@ -9,7 +9,6 @@ import random
 from datetime import datetime
 from pathlib import Path
 
-#TODO: Bold selects
 #TODO: build curses app
     #TODO: stats - selected/rejected lines
     #TODO: show dynamic current time
@@ -123,8 +122,12 @@ def rejector(reject_patterns):
 def garbage(line):
     pass
 
-def _print(line):
-    print(line.print(), end='', flush=True)
+def _print(session_id):
+    color = Color()
+    def fn(line):
+        sid = color.fg(f'{session_id}|', GREY)
+        print(sid + line.print(), end='', flush=True)
+    return fn
 
 def _no_print(line):
     print('.',end='',flush=True)
@@ -320,7 +323,7 @@ def main(quiet=False):
     if quiet:
         _print_fn = _no_print
     else:
-        _print_fn = _print
+        _print_fn = _print(session_id)
 
     pid_packages = []
     if 'pids' in config:
@@ -329,7 +332,7 @@ def main(quiet=False):
     w_fn = writer_fn(session_id, config['log_dir'], config['file_size']) #100 lines is about 15K
 
     try:
-        looper(sys.stdin, printer=_print, writer=w_fn, selector=s_fn, rejector=r_fn, packages=pid_packages)
+        looper(sys.stdin, printer=_print_fn, writer=w_fn, selector=s_fn, rejector=r_fn, packages=pid_packages)
     except KeyboardInterrupt:
         log('\nEnding session name:', session_id)
         log('Used config: ', config)
