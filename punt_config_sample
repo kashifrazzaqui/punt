@@ -1,0 +1,4 @@
+pids = com.myapp
+select = some_tag
+reject = some_noisy_tag
+log_dir = ~/logs
