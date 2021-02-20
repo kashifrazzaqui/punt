@@ -5,15 +5,18 @@ import re
 from collections import namedtuple
 import sty
 import subprocess
+import random
+from datetime import datetime
+from pathlib import Path
 
-#TODO: Random session name
 #TODO: File saving and rotation
-#TODO: Profiling
 #TODO: Bold selects
 #TODO: build curses app
     #TODO: stats - selected/rejected lines
     #TODO: show dynamic current time
     #TODO: show config and pids etc
+    #TODO: show select/rejects in window - toggle
+    #TODO: start new file now - keybinding
 
 COMMA = ','
 SPACE = ' '
@@ -86,7 +89,6 @@ def formatter(color_dict):
         time = color.fg(obj.time, color_dict['time'])
         pid = color.fg(_pad(obj.pid, 5), color_dict['pid'])
         tid = color.fg(_pad(obj.tid, 5), color_dict['tid'])
-        #level = color.fg(obj.level, D_BLUE)
         level = _format_log_level(color, obj.level)
         message = color.fg(obj.message, color_dict['message'])
         return f"{date} {time} {pid}({tid}) {level} {message}"
@@ -94,8 +96,13 @@ def formatter(color_dict):
 
 color_dict = {'date':GREY, 'time':L_BLUE, 'pid':GREY, 'tid':D_GREY, 'message':WHITE}
 
+
+def _raw_print(o):
+    return f"{o.date} {o.time} {o.pid}({o.tid}) {o.level} #{o.line_no} {o.message}"
+
 LogLine = namedtuple('LogLine', ['line_no', 'date','time','pid','tid','level','message'])
-LogLine.__str__ = formatter(color_dict)
+LogLine.print = formatter(color_dict)
+LogLine.__str__ = _raw_print
 
 
 def selector(select_patterns):
@@ -118,7 +125,7 @@ def garbage(line):
     pass
 
 def _print(line):
-    print(line, end='', flush=True)
+    print(line.print(), end='', flush=True)
 
 def _no_print(line):
     print('.',end='',flush=True)
@@ -127,6 +134,47 @@ def _parse(line, line_no):
     ldate, ltime, lpid, ltid, llevel = line[:32].split()
     return LogLine(line_no, ldate, ltime, lpid, ltid, llevel, line[33:])
 
+class Writer:
+    def __init__(self, session_id, base_dir, lines_per_file=100000):
+        t = datetime.today()
+        self._sid = session_id
+        self._today = f"{t.year}-{t.month}-{t.day}"
+        if not base_dir.endswith('/'):
+            base_dir += '/'
+        self._base_dir = base_dir
+        self._current_file_sequence = 1
+        self._line_count = 0
+        self._file_size = lines_per_file
+        self._truncate_marker = lines_per_file
+        self._make_dir()
+        self._open()
+        log(f'File init done. {self._sid}|{self._base_dir}|{self._current_filename()}')
+
+    def _dir_name(self):
+        return self._base_dir + self._today + f"/{self._sid}"
+
+    def _make_dir(self):
+        Path(self._dir_name()).mkdir(parents=True, exist_ok=True)
+
+    def _current_filename(self):
+        return f'log-{self._current_file_sequence}.txt'
+
+    def _open(self):
+        f_path = f'{self._dir_name()}/{self._current_filename()}'
+        self._log_file =  open(f_path, 'w')
+
+    def close(self):
+        self._log_file.flush()
+        self._log_file.close()
+
+    def write(self, line):
+        if self._line_count > self._truncate_marker:
+            self._truncate_marker += self._file_size
+            self.close()
+            self._current_file_sequence += 1
+            self._open()
+        self._log_file.write(str(line))
+        self._line_count += 1
 
 class ProcessTracker:
     def __init__(self, packages=None):
@@ -163,7 +211,7 @@ class ProcessTracker:
         return False
 
 
-def looper(lines, printer, select_fn, reject_fn, packages=None):
+def looper(lines, printer, writer, selector, rejector, packages=None):
     """
     For any TRACKED process we print all lines - unless there is a rejectable regex.
     For any UNTRACKED process we reject all lines - unless there is selectable regex.
@@ -173,26 +221,29 @@ def looper(lines, printer, select_fn, reject_fn, packages=None):
         try:
             log_line = _parse(line, line_no)
             if tracker.is_tracked(log_line.pid):
-                if reject_fn:
-                    if reject_fn(log_line):
+                if rejector:
+                    if rejector(log_line):
                         garbage(log_line)
                     else:
                         printer(log_line)
+                        writer(log_line)
                 else:
                     printer(log_line)
+                    writer(log_line)
             else:
-                if select_fn:
-                    if select_fn(log_line):
+                if selector:
+                    if selector(log_line):
                         printer(log_line)
+                        writer(log_line)
                     else:
                         garbage(log_line)
                 else:
-                   garbage(log_line)
+                    garbage(log_line)
         except ValueError as e:
             log('NOPARSE:',line)
 
 def default_config():
-    config = {'log_dir':'logs/'}
+    config = {'log_dir':'logs/', 'file_size':100000}
     return config
 
 def _to_list(s):
@@ -222,6 +273,8 @@ def read_config(filepath):
         config = _convert_keys(config, _to_list, ['select','reject'])
         config = _convert_keys(config, _to_pattern, ['select', 'reject'])
         result.update(config)
+        result['log_dir'] = os.path.expanduser(result['log_dir'])
+        result['file_size'] = int(result['file_size'])
     else:
         log('No config file, continuing with defaults')
     return result
@@ -240,14 +293,31 @@ def _get_filter_fns(config):
             s_fn = selector(config['select'])
     if 'reject' in config:
         if config['reject'] == '*':
-            r_fn=lambda x: True
+            r_fn = lambda x: True
         else:
             r_fn = rejector(config['reject'])
     return s_fn, r_fn
 
+def _new_session_id():
+    return "%04x" % random.getrandbits(16)
+
+def writer_fn(session_id, log_dir,file_size):
+    w = Writer(session_id, log_dir,file_size)
+    def fn(line):
+        try:
+            w.write(line)
+        except Exception as e:
+            print('Caught exception when writing', e)
+            w.close()
+            sys.exit(1)
+    return fn
+
 def main(quiet=False):
+    session_id = _new_session_id()
+    log('Session name', session_id)
     config_filepath = os.path.expanduser(os.environ.get('PUNT_CONFIG',''))
     config = read_config(config_filepath)
+    log('Used config: ', config)
     if quiet:
         _print_fn = _no_print
     else:
@@ -255,12 +325,14 @@ def main(quiet=False):
 
     pid_packages = _get_pid_packages(config['pids'])
     s_fn, r_fn = _get_filter_fns(config)
+    w_fn = writer_fn(session_id, config['log_dir'], config['file_size']) #100 lines is about 15K
 
-    looper(sys.stdin, printer=_print_fn, select_fn=s_fn, reject_fn=r_fn, packages=pid_packages)
-
-    log('\nEnding session name:')
-    log('Used config: ', config)
-    sys.exit(0)
+    try:
+        looper(sys.stdin, printer=_print, writer=w_fn, selector=s_fn, rejector=r_fn, packages=pid_packages)
+    except KeyboardInterrupt:
+        log('\nEnding session name:', session_id)
+        log('Used config: ', config)
+        sys.exit(0)
 
 if __name__ == '__main__':
-    main(quiet=False)
+    main(quiet=True)
