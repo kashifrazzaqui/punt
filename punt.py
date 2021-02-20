@@ -9,7 +9,6 @@ import random
 from datetime import datetime
 from pathlib import Path
 
-#TODO: File saving and rotation
 #TODO: Bold selects
 #TODO: build curses app
     #TODO: stats - selected/rejected lines
@@ -108,7 +107,7 @@ LogLine.__str__ = _raw_print
 def selector(select_patterns):
     def _pred(log_line):
         for p in select_patterns:
-            result = p.search(log_line.log)
+            result = p.search(log_line.message)
             if result and result.start() >= 0: return True
         return False
     return _pred
@@ -323,7 +322,9 @@ def main(quiet=False):
     else:
         _print_fn = _print
 
-    pid_packages = _get_pid_packages(config['pids'])
+    pid_packages = []
+    if 'pids' in config:
+        pid_packages = _get_pid_packages(config['pids'])
     s_fn, r_fn = _get_filter_fns(config)
     w_fn = writer_fn(session_id, config['log_dir'], config['file_size']) #100 lines is about 15K
 
@@ -335,4 +336,4 @@ def main(quiet=False):
         sys.exit(0)
 
 if __name__ == '__main__':
-    main(quiet=True)
+    main(quiet=False)
