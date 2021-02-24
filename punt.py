@@ -9,12 +9,14 @@ import random
 from datetime import datetime
 from pathlib import Path
 
+#TODO: Log level filter
+#TODO: Tag coloring ': '
 #TODO: build curses app
-    #TODO: stats - selected/rejected lines
-    #TODO: show dynamic current time
-    #TODO: show config and pids etc
-    #TODO: show select/rejects in window - toggle
-    #TODO: start new file now - keybinding
+#TODO: stats - selected/rejected lines
+#TODO: show dynamic current time
+#TODO: show config and pids etc
+#TODO: show select/rejects in window - toggle
+#TODO: start new file now - keybinding
 
 COMMA = ','
 SPACE = ' '
@@ -37,21 +39,34 @@ VERBOSE = 'VRB'
 DEBUG = 'DBG'
 INFO = 'INF'
 WARN = 'WRN'
-ERROR ='ERR'
+ERROR = 'ERR'
 FATAL = 'FTL'
 
 ENABLE_LOGGING = True
+ENABLE_TRACING = False
+ENABLE_GARBAGE = True
+
 
 def log(message, *args):
     if ENABLE_LOGGING:
-        print('>>>',message, *args)
+        print('>>>', message, *args)
+
+
+def trace(message, flush_now=False):
+    if ENABLE_TRACING:
+        if flush_now:
+            print(message, flush=flush_now)
+            print('§', end=' ', flush=False)
+        else:
+            print(message, end=' ', flush=flush_now)
+
 
 class Color:
     def fg(self, s, color):
-        return getattr(sty.fg,color) + s + sty.rs.fg
+        return getattr(sty.fg, color) + s + sty.rs.fg
 
     def bg(self, s, color):
-        return getattr(sty.bg,color) + s + sty.rs.bg
+        return getattr(sty.bg, color) + s + sty.rs.bg
 
     def bold(self, s):
         return sty.ef.bold + s + sty.rs.bold_dim
@@ -60,8 +75,10 @@ class Color:
         s = self.fg(s, fg_color)
         return self.bg(s, bg_color)
 
-def _pad(s, width,fill_char=SPACE, align=RIGHT):
-    return '{message:{fill}{align}{width}}'.format(message=s,fill=fill_char, align=align,width=width)
+
+def _pad(s, width, fill_char=SPACE, align=RIGHT):
+    return '{message:{fill}{align}{width}}'.format(message=s, fill=fill_char, align=align, width=width)
+
 
 def _format_log_level(color, level):
     if level == 'V':
@@ -80,8 +97,10 @@ def _format_log_level(color, level):
         level = color.this(level, BLACK)
     return color.bold(level)
 
+
 def formatter(color_dict):
     color = Color()
+
     def _formatter(obj):
         date = color.fg(obj.date, color_dict['date'])
         time = color.fg(obj.time, color_dict['time'])
@@ -90,15 +109,18 @@ def formatter(color_dict):
         level = _format_log_level(color, obj.level)
         message = color.fg(obj.message, color_dict['message'])
         return f"{date} {time} {pid}({tid}) {level} {message}"
+
     return _formatter
 
-color_dict = {'date':GREY, 'time':L_BLUE, 'pid':GREY, 'tid':D_GREY, 'message':WHITE}
+
+color_dict = {'date': GREY, 'time': L_BLUE, 'pid': GREY, 'tid': D_GREY, 'message': WHITE}
 
 
 def _raw_print(o):
     return f"{o.date} {o.time} {o.pid}({o.tid}) {o.level} #{o.line_no} {o.message}"
 
-LogLine = namedtuple('LogLine', ['line_no', 'date','time','pid','tid','level','message'])
+
+LogLine = namedtuple('LogLine', ['line_no', 'date', 'time', 'pid', 'tid', 'level', 'message'])
 LogLine.print = formatter(color_dict)
 LogLine.__str__ = _raw_print
 
@@ -109,7 +131,9 @@ def selector(select_patterns):
             result = p.search(log_line.message)
             if result and result.start() >= 0: return True
         return False
+
     return _pred
+
 
 def rejector(reject_patterns):
     def _pred(log_line):
@@ -117,24 +141,38 @@ def rejector(reject_patterns):
             result = p.search(log_line.message)
             if result and result.start() >= 0: return True
         return False
+
     return _pred
 
+
 def garbage(line):
-    pass
+    if ENABLE_GARBAGE:
+        print('.', end='', flush=True)
+
 
 def _print(session_id):
     color = Color()
-    def fn(line):
+
+    def fn(line, start_new_line=False):
+        if start_new_line: print('-', flush=True)
         sid = color.fg(f'{session_id}|', GREY)
         print(sid + line.print(), end='', flush=True)
+
     return fn
 
+
 def _no_print(line):
-    print('.',end='',flush=True)
+    print('.', end='', flush=True)
+
+
+def _relevant_log_level(log_line, targets):
+    return True if log_line.level in targets else False
+
 
 def _parse(line, line_no):
     ldate, ltime, lpid, ltid, llevel = line[:32].split()
     return LogLine(line_no, ldate, ltime, lpid, ltid, llevel, line[33:])
+
 
 class Writer:
     def __init__(self, session_id, base_dir, lines_per_file=100000):
@@ -163,7 +201,7 @@ class Writer:
 
     def _open(self):
         f_path = f'{self._dir_name()}/{self._current_filename()}'
-        self._log_file =  open(f_path, 'w')
+        self._log_file = open(f_path, 'w')
 
     def close(self):
         self._log_file.flush()
@@ -178,6 +216,7 @@ class Writer:
         self._log_file.write(str(line))
         self._line_count += 1
 
+
 class ProcessTracker:
     def __init__(self, packages=None):
         if packages:
@@ -189,7 +228,7 @@ class ProcessTracker:
         self._all_pids = set(self._tracked_pids)
 
     def _get_pid(self, package):
-        result = subprocess.run(['adb','shell','pidof',package], stdout=subprocess.PIPE)
+        result = subprocess.run(['adb', 'shell', 'pidof', package], stdout=subprocess.PIPE)
         pid = result.stdout.decode('utf-8')[:-1]
         return pid
 
@@ -213,48 +252,73 @@ class ProcessTracker:
         return False
 
 
-def looper(lines, printer, writer, selector, rejector, packages=None):
+def looper(lines, printer, writer, selector, rejector, target_levels, packages=None):
     """
     For any TRACKED process we print all lines - unless there is a rejectable regex.
     For any UNTRACKED process we reject all lines - unless there is selectable regex.
     """
     tracker = ProcessTracker(packages)
+    last_line_garbage = False
     for line_no, line in enumerate(lines, 1):
         try:
             log_line = _parse(line, line_no)
-            if tracker.is_tracked(log_line.pid):
-                if rejector:
-                    if rejector(log_line):
-                        garbage(log_line)
+            trace('PID: ' + str(log_line.pid))
+            if _relevant_log_level(log_line, target_levels):
+                trace('relevant log level ' + log_line.level)
+                if tracker.is_tracked(log_line.pid):
+                    trace('tracked')
+                    if rejector:
+                        trace('rejector defined')
+                        if rejector(log_line):
+                            trace('rejected to garbage', flush_now=True)
+                            garbage(log_line)
+                            last_line_garbage = True
+                        else:
+                            trace('could not reject', flush_now=True)
+                            printer(log_line, start_new_line=last_line_garbage)
+                            writer(log_line)
                     else:
-                        printer(log_line)
+                        trace('rejector undefined', flush_now=True)
+                        printer(log_line, start_new_line=last_line_garbage)
                         writer(log_line)
                 else:
-                    printer(log_line)
-                    writer(log_line)
+                    trace('untracked')
+                    if selector:
+                        trace('selector defined')
+                        if selector(log_line):
+                            trace('selected', flush_now=True)
+                            printer(log_line, start_new_line=last_line_garbage)
+                            writer(log_line)
+                        else:
+                            trace('not selected off to garbage', flush_now=True)
+                            garbage(log_line)
+                            last_line_garbage = True
+                    else:
+                        trace('selector undefined off to garbage', flush_now=True)
+                        garbage(log_line)
+                        last_line_garbage = True
             else:
-                if selector:
-                    if selector(log_line):
-                        printer(log_line)
-                        writer(log_line)
-                    else:
-                        garbage(log_line)
-                else:
-                    garbage(log_line)
+                trace('irrelevant log level ' + log_line.level)
+                garbage(log_line)
+                last_line_garbage = True
         except ValueError as e:
-            log('NOPARSE:',line)
+            trace('NOPARSE: ' + line, flush_now=True)
+
 
 def default_config():
-    config = {'log_dir':'logs/', 'file_size':100000}
+    config = {'log_dir': 'logs/', 'file_size': 100000}
     return config
+
 
 def _to_list(s):
     s = s.split(',')
     s = [each.strip() for each in s]
     return s
 
+
 def _to_pattern(l):
     return [re.compile(pattern) for pattern in l]
+
 
 def _convert_keys(config, convert_fn, keys):
     for k in keys:
@@ -272,8 +336,12 @@ def read_config(filepath):
         config = configparser.ConfigParser()
         config.read_string(config_string)
         config = config._sections['X']
-        config = _convert_keys(config, _to_list, ['select','reject'])
+        config = _convert_keys(config, _to_list, ['select', 'reject'])
         config = _convert_keys(config, _to_pattern, ['select', 'reject'])
+        if 'log_levels' in config:
+            config['log_levels'] = config['log_levels'].upper()
+        else:
+            config['log_levels'] = "VIDWEF"
         result.update(config)
         result['log_dir'] = os.path.expanduser(result['log_dir'])
         result['file_size'] = int(result['file_size'])
@@ -281,16 +349,18 @@ def read_config(filepath):
         log('No config file, continuing with defaults')
     return result
 
+
 def _get_pid_packages(packages):
     result = packages.split(COMMA)
-    log('packages',result)
+    log('packages', result)
     return result
+
 
 def _get_filter_fns(config):
     s_fn, r_fn = None, None
     if 'select' in config:
         if config['select'] == '*':
-            s_fn=lambda x: True
+            s_fn = lambda x: True
         else:
             s_fn = selector(config['select'])
     if 'reject' in config:
@@ -300,11 +370,14 @@ def _get_filter_fns(config):
             r_fn = rejector(config['reject'])
     return s_fn, r_fn
 
+
 def _new_session_id():
     return "%04x" % random.getrandbits(16)
 
-def writer_fn(session_id, log_dir,file_size):
-    w = Writer(session_id, log_dir,file_size)
+
+def writer_fn(session_id, log_dir, file_size):
+    w = Writer(session_id, log_dir, file_size)
+
     def fn(line):
         try:
             w.write(line)
@@ -312,12 +385,14 @@ def writer_fn(session_id, log_dir,file_size):
             print('Caught exception when writing', e)
             w.close()
             sys.exit(1)
+
     return fn
+
 
 def main(quiet=False):
     session_id = _new_session_id()
     log('Session name', session_id)
-    config_filepath = os.path.expanduser(os.environ.get('PUNT_CONFIG',''))
+    config_filepath = os.path.expanduser(os.environ.get('PUNT_CONFIG', ''))
     config = read_config(config_filepath)
     log('Used config: ', config)
     if quiet:
@@ -329,14 +404,21 @@ def main(quiet=False):
     if 'pids' in config:
         pid_packages = _get_pid_packages(config['pids'])
     s_fn, r_fn = _get_filter_fns(config)
-    w_fn = writer_fn(session_id, config['log_dir'], config['file_size']) #100 lines is about 15K
+    w_fn = writer_fn(session_id, config['log_dir'], config['file_size'])  #100 lines is about 15K
 
     try:
-        looper(sys.stdin, printer=_print_fn, writer=w_fn, selector=s_fn, rejector=r_fn, packages=pid_packages)
+        looper(sys.stdin,
+               printer=_print_fn,
+               writer=w_fn,
+               selector=s_fn,
+               rejector=r_fn,
+               target_levels=config['log_levels'],
+               packages=pid_packages)
     except KeyboardInterrupt:
         log('\nEnding session name:', session_id)
         log('Used config: ', config)
         sys.exit(0)
+
 
 if __name__ == '__main__':
     main(quiet=False)
