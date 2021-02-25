@@ -42,13 +42,14 @@ WARN = 'WRN'
 ERROR = 'ERR'
 FATAL = 'FTL'
 
-ENABLE_LOGGING = True
+ENABLE_DEBUG_LOG = False
 ENABLE_TRACING = False
 ENABLE_GARBAGE = True
+ENABLE_FILE_LOGGING = False
 
 
 def log(message, *args):
-    if ENABLE_LOGGING:
+    if ENABLE_DEBUG_LOG:
         print('>>>', message, *args)
 
 
@@ -385,8 +386,10 @@ def writer_fn(session_id, log_dir, file_size):
             print('Caught exception when writing', e)
             w.close()
             sys.exit(1)
-
     return fn
+
+def _no_write(line):
+    pass
 
 
 def main(quiet=False):
@@ -404,7 +407,10 @@ def main(quiet=False):
     if 'pids' in config:
         pid_packages = _get_pid_packages(config['pids'])
     s_fn, r_fn = _get_filter_fns(config)
-    w_fn = writer_fn(session_id, config['log_dir'], config['file_size'])  #100 lines is about 15K
+    #100K lines is about 13M
+    w_fn = _no_write
+    if ENABLE_FILE_LOGGING:
+        w_fn = writer_fn(session_id, config['log_dir'], config['file_size'])
 
     try:
         looper(sys.stdin,
