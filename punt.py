@@ -8,6 +8,7 @@ import subprocess
 import random
 from datetime import datetime
 from pathlib import Path
+from itertools import cycle
 
 #TODO: Log level filter
 #TODO: Tag coloring ': '
@@ -45,7 +46,7 @@ FATAL = 'FTL'
 ENABLE_DEBUG_LOG = False
 ENABLE_TRACING = False
 ENABLE_GARBAGE = True
-ENABLE_FILE_LOGGING = False
+ENABLE_FILE_LOGGING = True
 
 
 def log(message, *args):
@@ -146,19 +147,24 @@ def rejector(reject_patterns):
     return _pred
 
 
-def garbage(line):
-    if ENABLE_GARBAGE:
-        print('.', end='', flush=True)
+def garbage_fn():
+    #icons = ['.','*','+','-','/']
+    #icons= '\u2190,\u2191,\u2192,\u2193'.split(COMMA) #arrows
+    #icons = '\u231b,\u23f3'.split(COMMA) #hour-glass
+    icons= '\u2600,\u2601,\u2602,\u2603,\u2604,\u2605'.split(COMMA) #weather
+    pool = cycle(icons)
+    def fn(line):
+        if ENABLE_GARBAGE:
+            print(next(pool), end='\r', flush=True)
+    return fn
 
 
 def _print(session_id):
     color = Color()
-
-    def fn(line, start_new_line=False):
-        if start_new_line: print('-', flush=True)
+    def fn(line):
         sid = color.fg(f'{session_id}|', GREY)
+        #the adb output already has a new line
         print(sid + line.print(), end='', flush=True)
-
     return fn
 
 
@@ -259,7 +265,7 @@ def looper(lines, printer, writer, selector, rejector, target_levels, packages=N
     For any UNTRACKED process we reject all lines - unless there is selectable regex.
     """
     tracker = ProcessTracker(packages)
-    last_line_garbage = False
+    garbage = garbage_fn()
     for line_no, line in enumerate(lines, 1):
         try:
             log_line = _parse(line, line_no)
@@ -273,14 +279,13 @@ def looper(lines, printer, writer, selector, rejector, target_levels, packages=N
                         if rejector(log_line):
                             trace('rejected to garbage', flush_now=True)
                             garbage(log_line)
-                            last_line_garbage = True
                         else:
                             trace('could not reject', flush_now=True)
-                            printer(log_line, start_new_line=last_line_garbage)
+                            printer(log_line)
                             writer(log_line)
                     else:
                         trace('rejector undefined', flush_now=True)
-                        printer(log_line, start_new_line=last_line_garbage)
+                        printer(log_line)
                         writer(log_line)
                 else:
                     trace('untracked')
@@ -288,20 +293,17 @@ def looper(lines, printer, writer, selector, rejector, target_levels, packages=N
                         trace('selector defined')
                         if selector(log_line):
                             trace('selected', flush_now=True)
-                            printer(log_line, start_new_line=last_line_garbage)
+                            printer(log_line)
                             writer(log_line)
                         else:
                             trace('not selected off to garbage', flush_now=True)
                             garbage(log_line)
-                            last_line_garbage = True
                     else:
                         trace('selector undefined off to garbage', flush_now=True)
                         garbage(log_line)
-                        last_line_garbage = True
             else:
                 trace('irrelevant log level ' + log_line.level)
                 garbage(log_line)
-                last_line_garbage = True
         except ValueError as e:
             trace('NOPARSE: ' + line, flush_now=True)
 
