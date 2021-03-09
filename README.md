@@ -5,6 +5,8 @@ punt is a cli tool that makes `adb logcat` better.
 adb logcat | punt.py
 ```
 
+![Screenshot](https://github.com/kashifrazzaqui/punt/blob/main/punt_screenshot.png)
+
 ## Features
 * Automatically track your apps logs even if the PID changes when your app crashes or restarts
 * Save filters in a configuration file so you can easily switch between different configuration for different apps
