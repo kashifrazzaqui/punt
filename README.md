@@ -59,6 +59,7 @@ file_size = 25000
 ## Running
 ```
 cd punt # directory where you cloned the git repo
+chmod +x punt.py
 adb logcat | punt.py
 ```
 
