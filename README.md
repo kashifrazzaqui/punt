@@ -62,5 +62,6 @@ adb logcat | punt.py
 
 ## Output format
 `{session-id}|{date} {time} {pid}({tid}) {level} {message}`
+
 `session-id` is the name of the directory in which the current session log files are being saved - its 4 characters long.
 for example, you can find the files in ~/logs/<session-id>/log-37.txt
