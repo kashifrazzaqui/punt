@@ -6,11 +6,13 @@ from collections import namedtuple
 import sty
 import subprocess
 import random
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from itertools import cycle
 
 # TODO: start new file now - keybinding
+# TODO: Parse tag
+
 NEWLINE = "\n"
 COMMA = ","
 SPACE = " "
@@ -23,6 +25,7 @@ L_BLUE = "li_blue"
 D_BLUE = "da_blue"
 GREEN = "green"
 L_YELLOW = "li_yellow"
+L_BLACK = "li_black"
 YELLOW = "yellow"
 PINK = "li_magenta"
 D_MAGENTA = "da_magenta"
@@ -57,6 +60,20 @@ def trace(message, flush_now=False):
         else:
             print(message, end=" ", flush=flush_now)
 
+
+def pretty_time_delta(seconds):
+    seconds = int(seconds)
+    days, seconds = divmod(seconds, 86400)
+    hours, seconds = divmod(seconds, 3600)
+    minutes, seconds = divmod(seconds, 60)
+    if days > 0:
+        return '%dd%dh%dm%ds' % (days, hours, minutes, seconds)
+    elif hours > 0:
+        return '%dh%dm%ds' % (hours, minutes, seconds)
+    elif minutes > 0:
+        return '%dm%ds' % (minutes, seconds)
+    else:
+        return '%ds' % (seconds,)
 
 class Color:
     @staticmethod
@@ -152,6 +169,7 @@ def status_line_fn():
     # icons = '\u231b,\u23f3'.split(COMMA) #hour-glass
     icons = "\u2600,\u2601,\u2602,\u2603,\u2604,\u2605".split(COMMA)  # weather
     pool = cycle(icons)
+    start_time = datetime.now()
 
     def fn(line, proc_lines):
         if ENABLE_STATUS_LINE:
@@ -159,15 +177,17 @@ def status_line_fn():
             if proc_lines:
                 process_data = proc_lines[0][:-1]
             icon = next(pool)
-            status_line = f"{icon} {datetime.now().time()} L{line.line_no} {process_data}"
-            status_line = Color.fg(status_line, L_YELLOW)
+            elapsed = datetime.now() - start_time
+            elapsed = pretty_time_delta(elapsed.total_seconds())
+            status_line = f"{icon} {elapsed} L{line.line_no} {process_data}"
+            status_line = Color.this(status_line, YELLOW, BLACK)
             print(status_line, end="\r", flush=True)
     return fn
 
 
 def _print(session_id):
     def fn(line):
-        sid = Color.fg(f"{session_id}|", GREY)
+        sid = Color.this(f"{session_id}|", BLACK, D_GREY)
         sys.stdout.write("\033[K") # Clear to the end of line
 
         # the adb output already has a new line
@@ -413,7 +433,6 @@ def _get_filter_fns(config):
 def _new_session_id():
     return "%04x" % random.getrandbits(16)
 
-
 def writer_fn(session_id, log_dir, file_size):
     w = Writer(session_id, log_dir, file_size)
 
@@ -421,10 +440,8 @@ def writer_fn(session_id, log_dir, file_size):
         w.write(line)
     return fn
 
-
 def _no_write(line):
     pass
-
 
 def main(quiet=False):
     session_id = _new_session_id()
