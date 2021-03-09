@@ -36,7 +36,7 @@ WARN = "WRN"
 ERROR = "ERR"
 FATAL = "FTL"
 
-PROC_RATE = 5  # seconds
+PROC_RATE = 5  # checks /proc/status every 'n' seconds
 FILE_SIZE_LINES = 20000
 
 ENABLE_DEBUG_LOG = False
@@ -159,7 +159,7 @@ def status_line_fn():
             if proc_lines:
                 process_data = proc_lines[0][:-1]
             icon = next(pool)
-            status_line = f">> {datetime.now().time()} {icon} {process_data}"
+            status_line = f"{icon} {datetime.now().time()} L{line.line_no} {process_data}"
             status_line = Color.fg(status_line, L_YELLOW)
             print(status_line, end="\r", flush=True)
     return fn

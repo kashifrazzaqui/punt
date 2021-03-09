@@ -2,3 +2,5 @@ pids = com.myapp
 select = some_tag
 reject = some_noisy_tag
 log_dir = ~/logs
+log_levels = vdiwef
+file_size = 25000
