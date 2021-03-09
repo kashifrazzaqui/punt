@@ -11,7 +11,7 @@ from pathlib import Path
 from itertools import cycle
 
 # TODO: start new file now - keybinding
-
+NEWLINE = "\n"
 COMMA = ","
 SPACE = " "
 RIGHT = ">"
@@ -41,14 +41,13 @@ FILE_SIZE_LINES = 20000
 
 ENABLE_DEBUG_LOG = False
 ENABLE_TRACING = False
-ENABLE_GARBAGE = True
+ENABLE_STATUS_LINE = True
 ENABLE_FILE_LOGGING = True
 
 
 def log(message, *args):
     if ENABLE_DEBUG_LOG:
         print(">>>", message, *args)
-
 
 def trace(message, flush_now=False):
     if ENABLE_TRACING:
@@ -60,52 +59,54 @@ def trace(message, flush_now=False):
 
 
 class Color:
-    def fg(self, s, color):
+    @staticmethod
+    def fg(s, color):
         return getattr(sty.fg, color) + s + sty.rs.fg
 
-    def bg(self, s, color):
+    @staticmethod
+    def bg(s, color):
         return getattr(sty.bg, color) + s + sty.rs.bg
 
-    def bold(self, s):
+    @staticmethod
+    def bold(s):
         return sty.ef.bold + s + sty.rs.bold_dim
 
-    def this(self, s, bg_color, fg_color=WHITE):
-        s = self.fg(s, fg_color)
-        return self.bg(s, bg_color)
+    @staticmethod
+    def this(s, bg_color, fg_color=WHITE):
+        s = Color.fg(s, fg_color)
+        return Color.bg(s, bg_color)
 
 
 def _pad(s, width, fill_char=SPACE, align=RIGHT):
     return "{message:{fill}{align}{width}}".format(message=s, fill=fill_char, align=align, width=width)
 
 
-def _format_log_level(color, level):
+def _format_log_level(level):
     if level == "V":
-        level = color.this(VERBOSE, GREY)
+        level = Color.this(VERBOSE, GREY)
     elif level == "D":
-        level = color.this(DEBUG, L_BLUE)
+        level = Color.this(DEBUG, L_BLUE)
     elif level == "I":
-        level = color.this(INFO, GREEN)
+        level = Color.this(INFO, GREEN)
     elif level == "W":
-        level = color.this(WARN, PINK)
+        level = Color.this(WARN, PINK)
     elif level == "E":
-        level = color.this(ERROR, RED)
+        level = Color.this(ERROR, RED)
     elif level == "F":
-        level = color.this(INFO, RED)
+        level = Color.this(INFO, RED)
     else:
-        level = color.this(level, BLACK)
-    return color.bold(level)
+        level = Color.this(level, BLACK)
+    return Color.bold(level)
 
 
 def formatter(color_dict):
-    color = Color()
-
     def _formatter(obj):
-        date = color.fg(obj.date, color_dict["date"])
-        time = color.fg(obj.time, color_dict["time"])
-        pid = color.fg(_pad(obj.pid, 5), color_dict["pid"])
-        tid = color.fg(_pad(obj.tid, 5), color_dict["tid"])
-        level = _format_log_level(color, obj.level)
-        message = color.fg(obj.message, color_dict["message"])
+        date = Color.fg(obj.date, color_dict["date"])
+        time = Color.fg(obj.time, color_dict["time"])
+        pid = Color.fg(_pad(obj.pid, 5), color_dict["pid"])
+        tid = Color.fg(_pad(obj.tid, 5), color_dict["tid"])
+        level = _format_log_level(obj.level)
+        message = Color.fg(obj.message, color_dict["message"])
         return f"{date} {time} {pid}({tid}) {level} {message}"
 
     return _formatter
@@ -145,25 +146,30 @@ def rejector(reject_patterns):
     return _pred
 
 
-def garbage_fn():
+def status_line_fn():
     # icons = ['.','*','+','-','/']
     # icons= '\u2190,\u2191,\u2192,\u2193'.split(COMMA) #arrows
     # icons = '\u231b,\u23f3'.split(COMMA) #hour-glass
     icons = "\u2600,\u2601,\u2602,\u2603,\u2604,\u2605".split(COMMA)  # weather
     pool = cycle(icons)
 
-    def fn(line):
-        if ENABLE_GARBAGE:
-            print(">>", datetime.now().time(), next(pool), end="\r", flush=True)
-
+    def fn(line, proc_lines):
+        if ENABLE_STATUS_LINE:
+            process_data = ""
+            if proc_lines:
+                process_data = proc_lines[0][:-1]
+            icon = next(pool)
+            status_line = f">> {datetime.now().time()} {icon} {process_data}"
+            status_line = Color.fg(status_line, L_YELLOW)
+            print(status_line, end="\r", flush=True)
     return fn
 
 
 def _print(session_id):
-    color = Color()
-
     def fn(line):
-        sid = color.fg(f"{session_id}|", GREY)
+        sid = Color.fg(f"{session_id}|", GREY)
+        sys.stdout.write("\033[K") # Clear to the end of line
+
         # the adb output already has a new line
         print(sid + line.print(), end="", flush=True)
 
@@ -232,7 +238,7 @@ def _proc_pid(pid):
     )
     l = result.replace("\t", "").replace("'", "").replace(" ", "").split("\n")
     d = dict((each.split(":") for each in l if len(each) > 1))
-    s = f"%%PROC%% PID-{pid}| VM-Peak:{d['VmPeak']}, VM-HWM:{d['VmHWM']}, VM-RSS:{d['VmRSS']}, Threads:{d['Threads']}\n"
+    s = f"/proc/status : PID-{pid} VM-Peak:{d['VmPeak']}, VM-HWM:{d['VmHWM']}, VM-RSS:{d['VmRSS']}, Threads:{d['Threads']}\n"
     return s
 
 
@@ -240,7 +246,7 @@ def get_proc_lines(pids):
     result = []
     for each in pids:
         result.append(_proc_pid(each))
-    return "\n".join(result)
+    return result
 
 
 class ProcessTracker:
@@ -287,16 +293,16 @@ def looper(lines, printer, writer, selector, rejector, target_levels, packages=N
     For any UNTRACKED process we reject all lines - unless there is selectable regex.
     """
     tracker = ProcessTracker(packages)
-    garbage = garbage_fn()
+    status_printer = status_line_fn()
     last_proc_ts = datetime.now()
+    proc_lines = None
     for line_no, line in enumerate(lines, 1):
         try:
             delta = datetime.now() - last_proc_ts
             if delta.seconds > PROC_RATE:
                 last_proc_ts = datetime.now()
                 proc_lines = get_proc_lines(tracker.get_tracked_pids())
-                print(proc_lines)
-                writer(proc_lines)
+                writer(NEWLINE.join(proc_lines))
 
             log_line = _parse(line, line_no)
             trace("PID: " + str(log_line.pid))
@@ -308,7 +314,7 @@ def looper(lines, printer, writer, selector, rejector, target_levels, packages=N
                         trace("rejector defined")
                         if rejector(log_line):
                             trace("rejected to garbage", flush_now=True)
-                            garbage(log_line)
+                            status_printer(log_line, proc_lines)
                         else:
                             trace("could not reject", flush_now=True)
                             printer(log_line)
@@ -327,13 +333,13 @@ def looper(lines, printer, writer, selector, rejector, target_levels, packages=N
                             writer(log_line)
                         else:
                             trace("not selected off to garbage", flush_now=True)
-                            garbage(log_line)
+                            status_printer(log_line, proc_lines)
                     else:
                         trace("selector undefined off to garbage", flush_now=True)
-                        garbage(log_line)
+                        status_printer(log_line,proc_lines)
             else:
                 trace("irrelevant log level " + log_line.level)
-                garbage(log_line)
+                status_printer(log_line, proc_lines)
         except ValueError as e:
             trace("NOPARSE: " + line, flush_now=True)
 
@@ -441,7 +447,6 @@ def main(quiet=False):
     if "pids" in config:
         pid_packages = _get_pid_packages(config["pids"])
     s_fn, r_fn = _get_filter_fns(config)
-    # 100K lines is about 13M
     w_fn = _no_write
     if ENABLE_FILE_LOGGING:
         w_fn = writer_fn(session_id, config["log_dir"], config["file_size"])
