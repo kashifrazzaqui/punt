@@ -31,22 +31,36 @@ punt reads the PUNT_CONFIG environment variable for the full path of your config
 export $PUNT_CONFIG="~/.punt_configs/my_first_config.conf"
 ```
 or set it up permanently in your bash/zshr file
-
 if you want to change to another configuration, just export the path to PUNT_CONFIG and restart punt
 
 ### Sample config
-```
-pids = com.facebook.alohaworkvc #your app package name
-reject = words, or_comma_separated, regex_patterns #log lines from your package containing these words will be ignored
-log_dir = ~/logs # your directory for saving logs; each time you start a punt session, it creates a new sub directory to save files under this
-log_levels = vdiwef #chose which log levels you want, for example, no info is "vdwef"
-file_size = 25000 #each file is saved using format "log-n.txt" with so many lines per file
+```python
+#your app package name
+pids = com.facebook.alohaworkvc 
+
+#log lines from your package containing these words will be ignored
+reject = words, or_comma_separated, regex_patterns
+
+#these lines from untracked packages will additionally be included
+select = words, or_regex
+
+#your directory for saving logs; each time you start a punt session, it creates a new sub directory to save files under this
+log_dir = ~/logs
+
+ #chose which log levels you want, for example, no info is "vdwef"
+log_levels = vdiwef
+
+#each file is saved using format "log-n.txt" with so many lines per file
+file_size = 25000
 ```
 
 ## Running
-"""
+```
 cd punt # directory where you cloned the git repo
 adb logcat | punt.py
-"""
+```
 
-
+## Output format
+`{session-id}|{date} {time} {pid}({tid}) {level} {message}`
+`session-id` is the name of the directory in which the current session log files are being saved - its 4 characters long.
+for example, you can find the files in ~/logs/<session-id>/log-37.txt
