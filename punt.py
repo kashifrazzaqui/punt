@@ -418,13 +418,7 @@ def writer_fn(session_id, log_dir, file_size):
     w = Writer(session_id, log_dir, file_size)
 
     def fn(line):
-        try:
-            w.write(line)
-        except Exception as e:
-            print("Caught exception when writing", e)
-            w.close()
-            sys.exit(1)
-
+        w.write(line)
     return fn
 
 
