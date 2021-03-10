@@ -38,7 +38,7 @@ if you want to change to another configuration, just export the path to PUNT_CON
 ### Sample config
 ```python
 #your app package name
-pids = com.facebook.alohaworkvc 
+pids = com.me.myapp
 
 #log lines from your package containing these words will be ignored
 reject = words, or_comma_separated, regex_patterns
