@@ -13,12 +13,12 @@ from itertools import cycle
 # TODO: test without config file
 # TODO: exception counting
 # TODO: notifications
-# TODO: Parse tag
 # TODO: theming
 # TODO: start new file now - keybinding
 
 NEWLINE = "\n"
 COMMA = ","
+COLON = ":"
 SPACE = " "
 RIGHT = ">"
 WHITE = "white"
@@ -122,25 +122,31 @@ def _format_log_level(level):
 
 def formatter(color_dict):
     def _formatter(obj):
-        date = Color.fg(obj.date, color_dict["date"])
-        time = Color.fg(obj.time, color_dict["time"])
+        #date = Color.fg(obj.date, color_dict["date"])
+        truncated_time = obj.time[:10]
+        time = Color.fg(truncated_time, color_dict["time"])
         pid = Color.fg(_pad(obj.pid, 5), color_dict["pid"])
         tid = Color.fg(_pad(obj.tid, 5), color_dict["tid"])
         level = _format_log_level(obj.level)
+        truncated_tag = obj.tag[:40]
+        tag = Color.fg(_pad(truncated_tag, 40), color_dict["tag"])
+        #truncated_message = obj.message[:65]
+        #if not truncated_message.endswith(NEWLINE):
+        #    truncated_message += NEWLINE
         message = Color.fg(obj.message, color_dict["message"])
-        return f"{date} {time} {pid}({tid}) {level} {message}"
+        return f"{time} {pid}({tid}) {tag} {level} {message}"
 
     return _formatter
 
 
-color_dict = {"date": GREY, "time": L_BLUE, "pid": GREY, "tid": D_GREY, "message": WHITE}
+color_dict = {"date": GREY, "time": L_BLUE, "pid": GREY, "tid": D_GREY, "message": WHITE, "tag": L_YELLOW}
 
 
 def _raw_print(o):
-    return f"{o.date} {o.time} {o.pid}({o.tid}) {o.level} #{o.line_no} {o.message}"
+    return f"{o.date} {o.time} {o.pid}({o.tid}) {o.level} #{o.line_no} {o.tag} {o.message}"
 
 
-LogLine = namedtuple("LogLine", ["line_no", "date", "time", "pid", "tid", "level", "message"])
+LogLine = namedtuple("LogLine", ["line_no", "date", "time", "pid", "tid", "level", "tag", "message"])
 LogLine.print = formatter(color_dict)
 LogLine.__str__ = _raw_print
 
@@ -208,7 +214,15 @@ def _relevant_log_level(log_line, targets):
 
 def _parse(line, line_no):
     ldate, ltime, lpid, ltid, llevel = line[:32].split()
-    return LogLine(line_no, ldate, ltime, lpid, ltid, llevel, line[33:])
+    remaining = line[33:]
+    colon_pos = remaining.find(COLON)
+    if colon_pos > -1:
+        ltag = remaining[:colon_pos]
+        lline = remaining[colon_pos+1:]
+    else:
+        ltag = ""
+        lline = remaining
+    return LogLine(line_no, ldate, ltime, lpid, ltid, llevel, ltag, lline)
 
 
 class Writer:
