@@ -122,7 +122,7 @@ def _format_log_level(level):
 
 
 def formatter(color_dict):
-    def _formatter(obj):
+    def _formatter(obj,tick_tock=0):
         #date = Color.fg(obj.date, color_dict["date"])
         truncated_time = obj.time[:10]
         time = Color.fg(truncated_time, color_dict["time"])
@@ -134,13 +134,13 @@ def formatter(color_dict):
         #truncated_message = obj.message[:65]
         #if not truncated_message.endswith(NEWLINE):
         #    truncated_message += NEWLINE
-        message = Color.fg(obj.message, color_dict["message"])
+        message = Color.fg(obj.message, color_dict["message"][tick_tock])
         return f"{time} {pid}({tid}) {tag} {level} {message}"
 
     return _formatter
 
 
-color_dict = {"date": GREY, "time": L_GREY, "pid": D_GREY, "tid": D_GREY, "message": WHITE, "tag": L_BLUE}
+color_dict = {"date": GREY, "time": L_GREY, "pid": D_GREY, "tid": D_GREY, "message": [L_GREY, YELLOW], "tag": L_BLUE}
 
 
 def _raw_print(o):
@@ -205,10 +205,11 @@ def status_line_fn():
 
 
 def _print():
+    pool = cycle([0,1])
     def fn(line):
         sys.stdout.write("\033[K") # Clear to the end of line
         # the adb output already has a new line
-        print(line.print(), end="", flush=True)
+        print(line.print(tick_tock=next(pool)), end="", flush=True)
 
     return fn
 
@@ -292,7 +293,7 @@ def _proc_pid(pid):
     )
     l = result.replace("\t", "").replace("'", "").replace(" ", "").split("\n")
     d = dict((each.split(":") for each in l if len(each) > 1))
-    s = f"PID-{pid} /proc/status:  VM(Peak/HWM/RSS):({d['VmPeak']}/{d['VmHWM']}/{d['VmRSS']}) Threads:{d['Threads']}\n"
+    s = f"PID-{pid} /proc/status: VM(Peak/HWM/RSS):({d['VmPeak']}/{d['VmHWM']}/{d['VmRSS']}) Threads:{d['Threads']}\n"
     return s
 
 
