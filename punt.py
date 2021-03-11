@@ -10,8 +10,6 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from itertools import cycle
 
-# TODO: test without config file
-# TODO: exception counting
 # TODO: notifications
 # TODO: theming
 # TODO: start new file now - keybinding
@@ -42,6 +40,7 @@ INFO = "INF"
 WARN = "WRN"
 ERROR = "ERR"
 FATAL = "FTL"
+EXCEPTION_PATTERN = re.compile("java.*.Exception:")
 
 PROC_RATE = 5  # checks /proc/status every 'n' seconds
 FILE_SIZE_LINES = 20000
@@ -173,7 +172,7 @@ def rejector(reject_patterns):
     return _pred
 
 
-def status_line_fn(session_file):
+def status_line_fn():
     # icons = ['.','*','+','-','/']
     # icons= '\u2190,\u2191,\u2192,\u2193'.split(COMMA) #arrows
     # icons = '\u231b,\u23f3'.split(COMMA) #hour-glass
@@ -181,7 +180,7 @@ def status_line_fn(session_file):
     pool = cycle(icons)
     start_time = datetime.now()
 
-    def fn(line, proc_lines):
+    def fn(line, proc_lines, file_path, ex_count):
         if ENABLE_STATUS_LINE:
             process_data = ""
             if proc_lines:
@@ -189,7 +188,7 @@ def status_line_fn(session_file):
             icon = next(pool)
             elapsed = datetime.now() - start_time
             elapsed = pretty_time_delta(elapsed.total_seconds())
-            status_line = f"{icon} {elapsed} L{line.line_no} {session_file} {process_data}"
+            status_line = f"{icon} {elapsed} L{line.line_no} {file_path} {process_data} Exceptions:{ex_count}"
             status_line = Color.this(status_line, YELLOW, BLACK)
             print(status_line, end="\r", flush=True)
     return fn
@@ -333,6 +332,12 @@ class ProcessTracker:
     def get_tracked_pids(self):
         return self._tracked_pids
 
+def has_exception(log_line):
+    result = EXCEPTION_PATTERN.search(log_line.message)
+    if result and result.start() >= 0:
+        return True
+    return False
+
 
 def looper(session_id, lines, printer, writer, selector, rejector, target_levels, packages=None):
     """
@@ -340,10 +345,12 @@ def looper(session_id, lines, printer, writer, selector, rejector, target_levels
     For any UNTRACKED process we reject all lines - unless there is selectable regex.
     """
     tracker = ProcessTracker(packages)
-    status_printer = status_line_fn(writer.current_filename(full=True))
+    exception_count = 0
+    status_printer = status_line_fn()
     last_proc_ts = datetime.now()
     proc_lines = None
     for line_no, line in enumerate(lines, 1):
+        current_file = writer.current_filename(full=True)
         try:
             delta = datetime.now() - last_proc_ts
             if delta.seconds > PROC_RATE:
@@ -352,6 +359,9 @@ def looper(session_id, lines, printer, writer, selector, rejector, target_levels
                 writer.write(NEWLINE.join(proc_lines))
 
             log_line = _parse(line, line_no)
+            if has_exception(log_line):
+                exception_count += 1
+
             trace("PID: " + str(log_line.pid))
             if _relevant_log_level(log_line, target_levels):
                 trace("relevant log level " + log_line.level)
@@ -361,7 +371,7 @@ def looper(session_id, lines, printer, writer, selector, rejector, target_levels
                         trace("rejector defined")
                         if rejector(log_line):
                             trace("rejected to garbage", flush_now=True)
-                            status_printer(log_line, proc_lines)
+                            status_printer(log_line, proc_lines, current_file, exception_count)
                         else:
                             trace("could not reject", flush_now=True)
                             printer(log_line)
@@ -380,13 +390,13 @@ def looper(session_id, lines, printer, writer, selector, rejector, target_levels
                             writer.write(log_line)
                         else:
                             trace("not selected off to garbage", flush_now=True)
-                            status_printer(log_line, proc_lines)
+                            status_printer(log_line, proc_lines, current_file, exception_count)
                     else:
                         trace("selector undefined off to garbage", flush_now=True)
-                        status_printer(log_line,proc_lines)
+                        status_printer(log_line,proc_lines, current_file, exception_count)
             else:
                 trace("irrelevant log level " + log_line.level)
-                status_printer(log_line, proc_lines)
+                status_printer(log_line, proc_lines, current_file, exception_count)
         except ValueError as e:
             trace("NOPARSE: " + line, flush_now=True)
 
