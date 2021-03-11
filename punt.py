@@ -315,6 +315,8 @@ class ProcessTracker:
         return self._tracked_pids
 
     def is_tracked(self, pid):
+        if len(self._tracked_pids) == 0:
+            return True
         if pid in self._tracked_pids:
             return True
         if pid in self._all_pids:
@@ -391,6 +393,7 @@ def looper(session_id, lines, printer, writer, selector, rejector, target_levels
 
 def default_config():
     config = {"log_dir": "logs/", "file_size": FILE_SIZE_LINES}
+    config["log_levels"] = "VIDWEF"
     return config
 
 
@@ -424,8 +427,6 @@ def read_config(filepath):
         config = _convert_keys(config, _to_pattern, ["select", "reject"])
         if "log_levels" in config:
             config["log_levels"] = config["log_levels"].upper()
-        else:
-            config["log_levels"] = "VIDWEF"
         result.update(config)
         result["log_dir"] = os.path.expanduser(result["log_dir"])
         result["file_size"] = int(result["file_size"])
