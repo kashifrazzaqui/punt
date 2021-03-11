@@ -10,8 +10,12 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from itertools import cycle
 
-# TODO: start new file now - keybinding
+# TODO: test without config file
+# TODO: exception counting
+# TODO: notifications
 # TODO: Parse tag
+# TODO: theming
+# TODO: start new file now - keybinding
 
 NEWLINE = "\n"
 COMMA = ","
@@ -163,7 +167,7 @@ def rejector(reject_patterns):
     return _pred
 
 
-def status_line_fn():
+def status_line_fn(session_file):
     # icons = ['.','*','+','-','/']
     # icons= '\u2190,\u2191,\u2192,\u2193'.split(COMMA) #arrows
     # icons = '\u231b,\u23f3'.split(COMMA) #hour-glass
@@ -179,19 +183,17 @@ def status_line_fn():
             icon = next(pool)
             elapsed = datetime.now() - start_time
             elapsed = pretty_time_delta(elapsed.total_seconds())
-            status_line = f"{icon} {elapsed} L{line.line_no} {process_data}"
+            status_line = f"{icon} {elapsed} L{line.line_no} {session_file} {process_data}"
             status_line = Color.this(status_line, YELLOW, BLACK)
             print(status_line, end="\r", flush=True)
     return fn
 
 
-def _print(session_id):
+def _print():
     def fn(line):
-        sid = Color.this(f"{session_id}|", BLACK, D_GREY)
         sys.stdout.write("\033[K") # Clear to the end of line
-
         # the adb output already has a new line
-        print(sid + line.print(), end="", flush=True)
+        print(line.print(), end="", flush=True)
 
     return fn
 
@@ -214,6 +216,7 @@ class Writer:
         t = datetime.today()
         self._sid = session_id
         self._today = f"{t.year}-{t.month}-{t.day}"
+        self._enabled = False
         if not base_dir.endswith("/"):
             base_dir += "/"
         self._base_dir = base_dir
@@ -223,7 +226,7 @@ class Writer:
         self._truncate_marker = lines_per_file
         self._make_dir()
         self._open()
-        log(f"File init done. {self._sid}|{self._base_dir}|{self._current_filename()}")
+        log(f"File init done. {self._sid}|{self._base_dir}|{self.current_filename()}")
 
     def _dir_name(self):
         return self._base_dir + self._today + f"/{self._sid}"
@@ -231,25 +234,33 @@ class Writer:
     def _make_dir(self):
         Path(self._dir_name()).mkdir(parents=True, exist_ok=True)
 
-    def _current_filename(self):
-        return f"log-{self._current_file_sequence}.txt"
+    def current_filename(self, full=False):
+        if full:
+            return f"{self._dir_name()}/{self.current_filename()}"
+        else:
+            return f"log-{self._current_file_sequence}.txt"
+
 
     def _open(self):
-        f_path = f"{self._dir_name()}/{self._current_filename()}"
+        f_path = f"{self._dir_name()}/{self.current_filename()}"
         self._log_file = open(f_path, "w")
+
+    def enable(self):
+        self._enabled = True
 
     def close(self):
         self._log_file.flush()
         self._log_file.close()
 
     def write(self, line):
-        if self._line_count > self._truncate_marker:
-            self._truncate_marker += self._file_size
-            self.close()
-            self._current_file_sequence += 1
-            self._open()
-        self._log_file.write(str(line))
-        self._line_count += 1
+        if self._enabled:
+            if self._line_count > self._truncate_marker:
+                self._truncate_marker += self._file_size
+                self.close()
+                self._current_file_sequence += 1
+                self._open()
+            self._log_file.write(str(line))
+            self._line_count += 1
 
 
 def _proc_pid(pid):
@@ -307,13 +318,13 @@ class ProcessTracker:
         return self._tracked_pids
 
 
-def looper(lines, printer, writer, selector, rejector, target_levels, packages=None):
+def looper(session_id, lines, printer, writer, selector, rejector, target_levels, packages=None):
     """
     For any TRACKED process we print all lines - unless there is a rejectable regex.
     For any UNTRACKED process we reject all lines - unless there is selectable regex.
     """
     tracker = ProcessTracker(packages)
-    status_printer = status_line_fn()
+    status_printer = status_line_fn(writer.current_filename(full=True))
     last_proc_ts = datetime.now()
     proc_lines = None
     for line_no, line in enumerate(lines, 1):
@@ -322,7 +333,7 @@ def looper(lines, printer, writer, selector, rejector, target_levels, packages=N
             if delta.seconds > PROC_RATE:
                 last_proc_ts = datetime.now()
                 proc_lines = get_proc_lines(tracker.get_tracked_pids())
-                writer(NEWLINE.join(proc_lines))
+                writer.write(NEWLINE.join(proc_lines))
 
             log_line = _parse(line, line_no)
             trace("PID: " + str(log_line.pid))
@@ -338,11 +349,11 @@ def looper(lines, printer, writer, selector, rejector, target_levels, packages=N
                         else:
                             trace("could not reject", flush_now=True)
                             printer(log_line)
-                            writer(log_line)
+                            writer.write(log_line)
                     else:
                         trace("rejector undefined", flush_now=True)
                         printer(log_line)
-                        writer(log_line)
+                        writer.write(log_line)
                 else:
                     trace("untracked")
                     if selector:
@@ -350,7 +361,7 @@ def looper(lines, printer, writer, selector, rejector, target_levels, packages=N
                         if selector(log_line):
                             trace("selected", flush_now=True)
                             printer(log_line)
-                            writer(log_line)
+                            writer.write(log_line)
                         else:
                             trace("not selected off to garbage", flush_now=True)
                             status_printer(log_line, proc_lines)
@@ -433,16 +444,6 @@ def _get_filter_fns(config):
 def _new_session_id():
     return "%04x" % random.getrandbits(16)
 
-def writer_fn(session_id, log_dir, file_size):
-    w = Writer(session_id, log_dir, file_size)
-
-    def fn(line):
-        w.write(line)
-    return fn
-
-def _no_write(line):
-    pass
-
 def main(quiet=False):
     session_id = _new_session_id()
     log("Session name", session_id)
@@ -452,21 +453,22 @@ def main(quiet=False):
     if quiet:
         _print_fn = _no_print
     else:
-        _print_fn = _print(session_id)
+        _print_fn = _print()
 
     pid_packages = []
     if "pids" in config:
         pid_packages = _get_pid_packages(config["pids"])
     s_fn, r_fn = _get_filter_fns(config)
-    w_fn = _no_write
+    w = Writer(session_id, config["log_dir"], config["file_size"])
     if ENABLE_FILE_LOGGING:
-        w_fn = writer_fn(session_id, config["log_dir"], config["file_size"])
+        w.enable()
 
     try:
         looper(
+            session_id,
             sys.stdin,
             printer=_print_fn,
-            writer=w_fn,
+            writer=w,
             selector=s_fn,
             rejector=r_fn,
             target_levels=config["log_levels"],
