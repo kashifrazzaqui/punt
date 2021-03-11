@@ -23,10 +23,12 @@ WHITE = "white"
 BLACK = "black"
 GREY = "grey"
 D_GREY = "da_grey"
+L_GREY = "li_grey"
 L_BLUE = "li_blue"
 D_BLUE = "da_blue"
 GREEN = "green"
 L_YELLOW = "li_yellow"
+D_YELLOW = "da_yellow"
 L_BLACK = "li_black"
 YELLOW = "yellow"
 PINK = "li_magenta"
@@ -138,7 +140,7 @@ def formatter(color_dict):
     return _formatter
 
 
-color_dict = {"date": GREY, "time": L_BLUE, "pid": GREY, "tid": D_GREY, "message": WHITE, "tag": L_YELLOW}
+color_dict = {"date": GREY, "time": L_GREY, "pid": D_GREY, "tid": D_GREY, "message": WHITE, "tag": L_BLUE}
 
 
 def _raw_print(o):
@@ -153,9 +155,13 @@ LogLine.__str__ = _raw_print
 def selector(select_patterns):
     def _pred(log_line):
         for p in select_patterns:
-            result = p.search(log_line.message)
-            if result and result.start() >= 0:
+            tag_result = p.search(log_line.tag)
+            if tag_result and tag_result.start() >= 0:
                 return True
+            else:
+                message_result = p.search(log_line.message)
+                if message_result and message_result.start() >= 0:
+                    return True
         return False
 
     return _pred
@@ -164,9 +170,13 @@ def selector(select_patterns):
 def rejector(reject_patterns):
     def _pred(log_line):
         for p in reject_patterns:
-            result = p.search(log_line.message)
-            if result and result.start() >= 0:
+            tag_result = p.search(log_line.tag)
+            if tag_result and tag_result.start() >= 0:
                 return True
+            else:
+                message_result = p.search(log_line.message)
+                if message_result and message_result.start() >= 0:
+                    return True
         return False
 
     return _pred
@@ -189,7 +199,7 @@ def status_line_fn():
             elapsed = datetime.now() - start_time
             elapsed = pretty_time_delta(elapsed.total_seconds())
             status_line = f"{icon} {elapsed} L{line.line_no} {file_path} {process_data} Exceptions:{ex_count}"
-            status_line = Color.this(status_line, YELLOW, BLACK)
+            status_line = Color.this(status_line, D_MAGENTA, WHITE)
             print(status_line, end="\r", flush=True)
     return fn
 
@@ -282,7 +292,7 @@ def _proc_pid(pid):
     )
     l = result.replace("\t", "").replace("'", "").replace(" ", "").split("\n")
     d = dict((each.split(":") for each in l if len(each) > 1))
-    s = f"/proc/status : PID-{pid} VM-Peak:{d['VmPeak']}, VM-HWM:{d['VmHWM']}, VM-RSS:{d['VmRSS']}, Threads:{d['Threads']}\n"
+    s = f"PID-{pid} /proc/status:  VM(Peak/HWM/RSS):({d['VmPeak']}/{d['VmHWM']}/{d['VmRSS']}) Threads:{d['Threads']}\n"
     return s
 
 
