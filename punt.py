@@ -140,7 +140,7 @@ def formatter(color_dict):
     return _formatter
 
 
-color_dict = {"date": GREY, "time": L_GREY, "pid": D_GREY, "tid": D_GREY, "message": [L_GREY, YELLOW], "tag": L_BLUE}
+color_dict = {"date": GREY, "time": L_GREY, "pid": D_GREY, "tid": D_GREY, "message": [GREY, L_GREY], "tag": L_BLUE}
 
 
 def _raw_print(o):
