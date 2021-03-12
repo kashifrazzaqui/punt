@@ -16,8 +16,9 @@ adb logcat | punt.py
 * Automatically save logs for each session to disk - all day. Each line is prefixed with dir name of current logs for easy reference
 * Select custom log levels such as just "verbose" and "fatal"
 * Nice colored formatting on screen
-* Track process memory usage and thread count
+* Track process memory usage, thread count and exceptions
 * Easily save and reuse configuration/filters
+
 
 ## Install
 
@@ -64,7 +65,7 @@ adb logcat | punt.py
 ```
 
 ## Output format
-`{session-id}|{date} {time} {pid}({tid}) {level} {message}`
+`{time} {pid}({tid}) {tag} {level} {message}`
 
 `session-id` is the name of the directory in which the current session log files are being saved - its 4 characters long.
 for example, you can find the files in ~/logs/<session-id>/log-37.txt
