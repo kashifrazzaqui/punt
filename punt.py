@@ -351,8 +351,10 @@ def has_exception(log_line):
         return True
     return False
 
+def is_main_thread_log(log_line):
+    return log_line.pid == log_line.tid
 
-def looper(session_id, lines, printer, writer, selector, rejector, target_levels, packages=None):
+def looper(session_id, lines, printer, writer, selector, rejector, target_levels, only_main_thread, packages=None):
     """
     For any TRACKED process we print all lines - unless there is a rejectable regex.
     For any UNTRACKED process we reject all lines - unless there is selectable regex.
@@ -374,6 +376,10 @@ def looper(session_id, lines, printer, writer, selector, rejector, target_levels
             log_line = _parse(line, line_no)
             if has_exception(log_line):
                 exception_count += 1
+
+            if only_main_thread:
+                if not is_main_thread_log(log_line):
+                    continue #skip this log line as its not a mean thread line
 
             trace("PID: " + str(log_line.pid))
             if _relevant_log_level(log_line, target_levels):
@@ -415,7 +421,7 @@ def looper(session_id, lines, printer, writer, selector, rejector, target_levels
 
 
 def default_config():
-    config = {"log_dir": "logs/", "file_size": FILE_SIZE_LINES}
+    config = {"log_dir": "logs/", "file_size": FILE_SIZE_LINES, "only_main_thread":False}
     config["log_levels"] = "VIDWEF"
     return config
 
@@ -443,9 +449,11 @@ def read_config(filepath):
     if filepath:
         with open(filepath, "r") as f:
             config_string = "[X]\n" + f.read()
-        config = configparser.ConfigParser()
-        config.read_string(config_string)
-        config = config._sections["X"]
+        configp = configparser.ConfigParser()
+        configp.read_string(config_string)
+        config = configp._sections["X"]
+        if configp.has_option("X", 'only_main_thread'):
+            config['only_main_thread'] = configp.getboolean('X','only_main_thread')
         config = _convert_keys(config, _to_list, ["select", "reject"])
         config = _convert_keys(config, _to_pattern, ["select", "reject"])
         if "log_levels" in config:
@@ -510,7 +518,8 @@ def main(quiet=False):
             selector=s_fn,
             rejector=r_fn,
             target_levels=config["log_levels"],
-            packages=pid_packages,
+            only_main_thread=config["only_main_thread"],
+            packages=pid_packages
         )
     except KeyboardInterrupt:
         log("\nEnding session name:", session_id)
