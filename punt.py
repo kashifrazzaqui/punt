@@ -183,10 +183,8 @@ def rejector(reject_patterns):
 
 
 def status_line_fn():
-    # icons = ['.','*','+','-','/']
-    # icons= '\u2190,\u2191,\u2192,\u2193'.split(COMMA) #arrows
-    # icons = '\u231b,\u23f3'.split(COMMA) #hour-glass
-    icons = "\u2600,\u2601,\u2602,\u2603,\u2604,\u2605".split(COMMA)  # weather
+    icons = "\u203b,\u2055,\u205c,\u2055".split(COMMA)  # flower
+
     pool = cycle(icons)
     start_time = datetime.now()
 
