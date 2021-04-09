@@ -127,7 +127,10 @@ def formatter(color_dict):
         truncated_time = obj.time[:10]
         time = Color.fg(truncated_time, color_dict["time"])
         pid = Color.fg(_pad(obj.pid, 5), color_dict["pid"])
-        tid = Color.fg(_pad(obj.tid, 5), color_dict["tid"])
+        if obj.pid == obj.tid:
+            tid = Color.fg(_pad(obj.tid, 5), color_dict["tid-main"])
+        else:
+            tid = Color.fg(_pad(obj.tid, 5), color_dict["tid"])
         level = _format_log_level(obj.level)
         truncated_tag = obj.tag[:40]
         tag = Color.fg(_pad(truncated_tag, 40), color_dict["tag"])
@@ -140,7 +143,8 @@ def formatter(color_dict):
     return _formatter
 
 
-color_dict = {"date": GREY, "time": L_GREY, "pid": D_GREY, "tid": D_GREY, "message": [GREY, L_GREY], "tag": L_BLUE}
+color_dict = {"date": GREY, "time": L_GREY, "pid": D_GREY, "tid": D_GREY, "message": [GREY, L_GREY], "tag": L_BLUE,
+"tid-main": RED}
 
 
 def _raw_print(o):
