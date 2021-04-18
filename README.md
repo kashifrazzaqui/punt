@@ -18,6 +18,7 @@ adb logcat | punt.py
 * Nice colored formatting on screen
 * Track process memory usage, thread count and exceptions
 * Easily save and reuse configuration/filters
+* Log only lines from main/ui thread
 
 
 ## Install
