@@ -295,7 +295,10 @@ def _proc_pid(pid):
     )
     l = result.replace("\t", "").replace("'", "").replace(" ", "").split("\n")
     d = dict((each.split(":") for each in l if len(each) > 1))
-    s = f"PID-{pid} /proc/status: VM(Peak/HWM/RSS):({d['VmPeak']}/{d['VmHWM']}/{d['VmRSS']}) Threads:{d['Threads']}\n"
+    try:
+        s = f"PID-{pid} /proc/status: VM(Peak/HWM/RSS):({d['VmPeak']}/{d['VmHWM']}/{d['VmRSS']}) Threads:{d['Threads']}\n"
+    except KeyError:
+        s = f"No Active Process\n"
     return s
 
 
