@@ -33,7 +33,7 @@ pip install -r requirements.txt
 ## Configure
 punt reads the PUNT_CONFIG environment variable for the full path of your config file, set it like so
 ```
-export $PUNT_CONFIG="~/.punt_configs/my_first_config.conf"
+export PUNT_CONFIG="~/.punt_configs/my_first_config.conf"
 ```
 or set it up permanently in your bash/zshr file
 if you want to change to another configuration, just export the path to PUNT_CONFIG and restart punt
