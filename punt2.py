@@ -6,6 +6,8 @@ BuildSpec = collections.namedtuple('BuildSpec', 'name, ph, pw')
 
 class Window:
     def __init__(self, height, width, begin_x, begin_y):
+        #TODO: add name
+        #TODO: add pad support
         self.window = curses.newwin(int(height), int(width), int(begin_y), int(begin_x))
         self._has_border = False
 
@@ -33,8 +35,9 @@ class Layout:
 
     def build(self):
         self.compute_screen_size()
+        # TODO: delete existing windows - call `del win` to delete
         if self._has_status_bar:
-            self.status_bar = Window(1, self.width, 0, self.height)
+            self.status_bar = Window(2, self.width, 0, self.height-1)
             self._windows['status_bar'] = self.status_bar
 
         begin_x, begin_y = 0, 0
@@ -46,10 +49,10 @@ class Layout:
 
             if spec.pw > 0:  # is it specified or a fill remaing space
                 if spec.pw <= row_available:  # is there enough space in this row
+                    begin_x = end_x
                     row_available -= spec.pw
                     end_x = begin_x + abs_width
                     end_y = begin_y + abs_height
-                    begin_x = end_x
                 else:
                     row_available = 1.0  # new row
                     begin_y = end_y
@@ -93,18 +96,27 @@ def make_windows(stdscr, layout):
     layout.add_status_bar()
     windows = layout.build()
 
-    # windows['status_bar'].bkgd(curses.COLOR_RED)
-    # windows['left_panel'].box()
-    # right_panel.box()
-    # log_view.box()
+    for w in windows.values():
+        w.box()
+
+    curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_RED)
+    curses.init_pair(2, curses.COLOR_WHITE, curses.COLOR_BLUE)
+    curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_GREEN)
+    windows['status_bar'].bkgd(curses.color_pair(1))
+    windows['left_panel'].bkgd(curses.color_pair(2))
+    windows['right_panel'].bkgd(curses.color_pair(3))
     return windows
 
 
 def looper(layout, windows):
     k = ''
     lp = windows['left_panel']
+    rp = windows['right_panel']
+    sb = windows['status_bar']
     while k != ord('q'):
-        lp.addstr(0, 0, "voila")
+        lp.addstr(0, 0, str(len(windows.values())))
+        rp.addstr(1, 0, "rp")
+        sb.addstr(0, 0, "sb")
         k = lp.getch()
         layout.refresh()
         if k == curses.KEY_RESIZE:
@@ -115,6 +127,7 @@ def looper(layout, windows):
 def curses_main(stdscr):
     layout = Layout(stdscr)
     windows = make_windows(stdscr, layout)
+    layout.refresh()
     while looper(layout, windows):
         pass
 
