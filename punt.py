@@ -201,6 +201,11 @@ def status_line_fn():
             elapsed = datetime.now() - start_time
             elapsed = pretty_time_delta(elapsed.total_seconds())
             status_line = f"{icon} {elapsed} L{line.line_no} {file_path} {process_data} Exceptions:{ex_count}"
+
+            width = os.get_terminal_size()[0] - 4
+            if len(status_line) > width:
+                status_line = status_line[0:width] + "..."
+
             status_line = Color.this(status_line, D_MAGENTA, WHITE)
             print(status_line, end="\r", flush=True)
     return fn
